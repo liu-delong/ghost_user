@@ -278,6 +278,13 @@ struct RunRequestOptions {
 //  2. Submission may occur against a simulated ghOSt ABI, allowing for offline
 //     testing.  The actual implementation of RunRequest submission is
 //     implemented by an Enclave.
+/*
+RunRequest实现了一个事务性GhostHelper（）->Run（）API。这将实现：
+
+1.异步和批量调度。一旦打开RunRequest，就可以异步调用它。允许摊销与同步传输。
+
+2.提交可能针对模拟的ghOSt ABI进行，允许离线测试。RunRequest提交的实际实现由Enclave实现。
+*/
 class RunRequest {
  public:
   RunRequest() : cpu_(Cpu::UninitializedType::kUninitialized) {}
@@ -294,6 +301,11 @@ class RunRequest {
   // N.B. when used to assert sync_group ownership the caller must ensure
   // that no other agent will try to simultaneously grab ownership of the
   // transaction (for e.g. serializing via a lock).
+  /*
+  打开事务以供以后提交（同步或异步，取决于“commit_flags”的值）。
+
+N、 B.当用于断言sync_group所有权时，调用者必须确保没有其他代理试图同时获取事务的所有权（例如，通过锁进行序列化）。
+  */
   virtual void Open(const RunRequestOptions& options) = 0;
 
   // A specialization for the Run(0) case.  Please prefer this versus Open() as

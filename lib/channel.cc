@@ -156,8 +156,8 @@ std::string Message::stringify() const {
     case MSG_TASK_NEW: {
       const ghost_msg_payload_task_new* new_payload =
           static_cast<const ghost_msg_payload_task_new*>(payload());
-      absl::StrAppend(&result, " ",
-                      new_payload->runnable ? "runnable" : "blocked");
+      absl::StrAppend(&result, " ",new_payload->runnable ? "runnable" : "blocked");
+      absl::StrAppend(&result, " runtime ", new_payload->runtime);
       break;
     }
 
@@ -172,6 +172,7 @@ std::string Message::stringify() const {
       const ghost_msg_payload_task_blocked* blocked =
           static_cast<const ghost_msg_payload_task_blocked*>(payload());
       absl::StrAppend(&result, " on cpu ", blocked->cpu);
+      absl::StrAppend(&result, " runtime ", blocked->runtime);
       if (blocked->from_switchto) absl::StrAppend(&result, " (from_switchto)");
       break;
     }
@@ -188,6 +189,7 @@ std::string Message::stringify() const {
       const ghost_msg_payload_task_preempt* preempt =
           static_cast<const ghost_msg_payload_task_preempt*>(payload());
       absl::StrAppend(&result, " on cpu ", preempt->cpu);
+      absl::StrAppend(&result, " runtime ", preempt->runtime);
       if (preempt->was_latched) absl::StrAppend(&result, " (was_latched)");
       if (preempt->from_switchto) absl::StrAppend(&result, " (from_switchto)");
       break;
@@ -206,6 +208,14 @@ std::string Message::stringify() const {
           static_cast<const ghost_msg_payload_task_priority_changed*>(
               payload());
       absl::StrAppend(&result, " to nice ", priority->nice);
+      break;
+    }
+    case MSG_TASK_WAKEUP: {
+      const ghost_msg_payload_task_wakeup* wakeup =
+          static_cast<const ghost_msg_payload_task_wakeup*>(
+              payload());
+      absl::StrAppend(&result, " wakeup cpu ", wakeup->wake_up_cpu);
+      absl::StrAppend(&result, " waker cpu ", wakeup->waker_cpu);
       break;
     }
 

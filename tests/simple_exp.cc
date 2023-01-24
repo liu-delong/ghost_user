@@ -30,7 +30,11 @@ void SimpleExp() {
     // scheduling class.
     std::thread t2(
         [] { CHECK_EQ(sched_getscheduler(/*pid=*/0), SCHED_GHOST); });
+    std::thread t3(
+      [] {fprintf(stderr,"hello_world_from_t3\n");}
+    );
     t2.join();
+    t3.join();
   });
 
   t.Join();
@@ -186,30 +190,30 @@ int main() {
     ghost::ScopedTime time;
     ghost::SimpleExp();
   }
-  {
-    printf("SimpleExpMany\n");
-    ghost::ScopedTime time;
-    ghost::SimpleExpMany(1000);
-  }
-  {
-    printf("BusyExp\n");
-    ghost::ScopedTime time;
-    ghost::BusyExpRunFor(100, absl::Milliseconds(10));
-  }
-  {
-    printf("TaskDeparted\n");
-    ghost::ScopedTime time;
-    ghost::TaskDeparted();
-  }
-  {
-    printf("TaskDepartedMany\n");
-    ghost::ScopedTime time;
-    ghost::TaskDepartedMany(1000);
-  }
-  {
-    printf("TaskDepartedManyRace\n");
-    ghost::ScopedTime time;
-    ghost::TaskDepartedManyRace(1000);
-  }
+  // {
+  //   printf("SimpleExpMany\n");
+  //   ghost::ScopedTime time;
+  //   ghost::SimpleExpMany(1000);
+  // }
+  // {
+  //   printf("BusyExp\n");
+  //   ghost::ScopedTime time;
+  //   ghost::BusyExpRunFor(100, absl::Milliseconds(10));
+  // }
+  // {
+  //   printf("TaskDeparted\n");
+  //   ghost::ScopedTime time;
+  //   ghost::TaskDeparted();
+  // }
+  // {
+  //   printf("TaskDepartedMany\n");
+  //   ghost::ScopedTime time;
+  //   ghost::TaskDepartedMany(1000);
+  // }
+  // {
+  //   printf("TaskDepartedManyRace\n");
+  //   ghost::ScopedTime time;
+  //   ghost::TaskDepartedManyRace(1000);
+  // }
   return 0;
 }

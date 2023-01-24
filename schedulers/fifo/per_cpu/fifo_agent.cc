@@ -28,7 +28,9 @@ static void ParseAgentConfig(AgentConfig* config) {
   config->topology_ = topology;
   config->cpus_ = ghost_cpus;
   std::string enclave = absl::GetFlag(FLAGS_enclave);
+  std::cout<<"enclave:"<<enclave<<std::endl;
   if (!enclave.empty()) {
+    std::cout<<"flag_enclave_empty!"<<std::endl;
     int fd = open(enclave.c_str(), O_PATH);
     CHECK_GE(fd, 0);
     config->enclave_fd_ = fd;

@@ -284,11 +284,11 @@ struct AgentRpcResponse {
 // A full Agent entity, not to be confused with individual Agent tasks.
 // This is a collection of agent tasks and scheduler, connected to an enclave.
 // Derived classes implement specific agents, such as the GlobalEdfAgent.
-//
+
 // The agent tasks are all SCHED_GHOST class tasks.  Our caller is the task
 // that creates the agents and remains a CFS / SCHED_NORMAL task (or whatever
 // it was before).
-//
+
 // Most agents operate on a LocalEnclave (i.e. the kernel ABI), but you can
 // replace that with any Enclave
 template <class EnclaveType = LocalEnclave, class AgentConfigType = AgentConfig>
@@ -381,7 +381,7 @@ inline To agent_down_cast(From* f) {
 // the actual FullAgent.  The parent can communicate with the child via a shared
 // memory region.  The primary mechanism for communication is a hand-rolled RPC
 // system, built on top of Notifications.
-//
+
 // We fork a separate process for the FullAgent in order to keep the agent
 // process as slim as possible, isolating it from any random threads that may be
 // in the current process. This reduces (but does not completely eliminate) the
@@ -402,6 +402,8 @@ class AgentProcess {
   // otherwise the parent and child will have separate copies of the blob.  We
   // could use a bare struct, but the class will auto-construct its members
   // in-place.
+
+  //blob 二进制大对象？
   class SharedBlob {
    public:
     explicit SharedBlob() {}

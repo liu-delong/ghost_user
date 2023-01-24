@@ -17,6 +17,9 @@
 #include "lib/channel.h"
 #include "lib/enclave.h"
 #include "lib/ghost.h"
+#include "lib/monitor.h"
+#include <sys/types.h>   
+#include <sys/stat.h>
 
 namespace ghost {
 
@@ -46,11 +49,22 @@ struct Task {
 // our Enclave type.  This is intentional as we want to maximize the flexibility
 // of implementations.  See BasicDispatchScheduler below for a convenient
 // implementation base.
+
+/*
+最小的Scheduler基类。与其名称相反，该框架的主要目的是与其他系统抽象（如Enclave类型）同步。
+这是有意的，因为我们希望最大化实现的灵活性。请参阅下面的BasicDispatchScheduler，了解方便的实现基础。
+*/
 //
 // TODO: We probably want to bring our TaskTypes all the way back to the
 // Enclave so that we have an atom to interact with (although the Enclave could
 // possibly act on the core Task structure).  Let's see where this goes as we
 // write some more tests and schedulers.
+
+/*
+我们可能希望将我们的任务类型一直带回Enclave，这样我们就有一个原子可以与之交互（尽管Enclave可能会对核心任务结构起作用）。让我们看看这是怎么回事
+
+编写更多的测试和调度程序。
+*/
 class Scheduler {
  public:
   // DumpState flags:
@@ -93,10 +107,17 @@ class Scheduler {
 // the lifetime and providing the location of Task objects, potentially between
 // multiple scheduler instances.
 //
+
+/*
+TaskAllocator提供了一个共享的分配器接口，它能够拥有任务对象的生存期并提供任务对象的位置，可能在多个调度器实例之间。
+*/
 // Depending on the scheduling model, tasks may be associated with one, or many
 // schedulers; the allocator however, will be shared in this case.  In the case
 // that parallel schedulers are executing, the allocator
 // implementation must be thread-safe.
+/*
+根据调度模型，任务可以与一个或多个调度器相关联；然而，在这种情况下，分配器将被共享。在并行调度器正在执行的情况下，分配器实现必须是线程安全的。
+*/
 template <typename TaskType>
 class TaskAllocator {
  public:
@@ -121,6 +142,10 @@ class TaskAllocator {
 // A Scheduler implementation capable of decoding raw messages (from a Channel),
 // associating them with a Task-derived type and dispatching to an appropriate
 // scheduling-class method.
+
+/*
+一种调度器实现，能够解码原始消息（来自信道），将其与任务派生类型关联，并将其分派到适当的调度类方法。
+*/
 template <typename TaskType>
 class BasicDispatchScheduler : public Scheduler {
   static_assert(is_base_of_template_v<Task, TaskType>);
@@ -136,6 +161,7 @@ class BasicDispatchScheduler : public Scheduler {
   virtual void DispatchMessage(const Message& msg);
 
   void DiscoverTasks() override {
+    //这是一个要在子类实现的函数。
     DiscoveryStart();
 
     // The kernel may concurrently modify the SW as we read it.  Many changes
@@ -147,6 +173,17 @@ class BasicDispatchScheduler : public Scheduler {
     // the agent from missing a message.  For instance, switchto involves
     // changing the SW, but there is no corresponding message.  For this reason,
     // we rely on the enclave being "quiescent" (no client tasks).
+
+    /*
+    内核可能会在我们读取SW时同时修改它。许多更改涉及在将来的某个时间点增加屏障，特别是在task_woken_host期间和任务阻塞时。
+    我们可能会错过其他状态更改-内核并不保证屏障保护状态字，只是屏障防止代理丢失消息。
+    例如，switchto涉及更改SW，但没有相应的消息。因此，我们依赖于“静止”的飞地（没有客户端任务）。
+    */
+    //
+    /*
+    从enclave中读出每一个状态字，对于每个状态字，都调用匿名函数。
+    如何理解这个函数？匿名函数从它的参数中得知一个任务的信息。这个参数是调用者传进去的。匿名函数把信息整理好后，就会调用如taskNew之类的函数，为调度器进行任务初始化。
+    */
     enclave()->ForEachTaskStatusWord([this](ghost_status_word* sw,
                                             uint32_t region_id, uint32_t idx) {
       ghost_sw_info swi = {.id = region_id, .index = idx};
@@ -161,7 +198,8 @@ class BasicDispatchScheduler : public Scheduler {
     retry:
       // Pairs with the smp_store_release() in the kernel.  (READ_ONCE of the
       // barrier and an smp_rmb()).
-      sw_barrier = READ_ONCE(sw->barrier);
+      //读相关变量的值。 sw是状态字，描述一个任务。
+      sw_barrier = READ_ONCE(sw->barrier); 
 
       std::atomic_thread_fence(std::memory_order_acquire);
 
@@ -185,6 +223,16 @@ class BasicDispatchScheduler : public Scheduler {
       // *in this new agent* that this task could have been using is the Default
       // queue, which is the one we're (re)associating with.  i.e. we're not
       // swapping queues.
+      /*
+      我们将“盲目地”将任务与默认队列相关联，在这种情况下，我们实际上无法确保在关联之前收到所有消息。
+      以前发送的任何消息都被发送到旧代理的队列，下面处理了一个异常（EEXIST）。
+      seqnum/屏障有两个作用：确保我们没有错过任何消息，并确保我们以后不会处理任何不应该处理的消息。
+      关联用于在代理任务之间切换任务：控制队列的人有权处理任务。
+      如果我们关联到一个新队列，那么旧队列可能仍然有一条消息，这可能会违反该规则。
+
+      在这种情况下，当涉及到任务所有权时，我们是可以的。
+      此任务可能使用的新代理中的唯一队列*是默认队列，它是我们（重新）关联的队列。i、 我们没有交换队列。
+      */
       if (!GetDefaultChannel().AssociateTask(Gtid(sw_gtid), sw_barrier,
                                              &assoc_status)) {
         switch (errno) {
@@ -275,6 +323,7 @@ class BasicDispatchScheduler : public Scheduler {
       // messages must be aligned to the *size* of ghost_msg, not to the
       // alignment of a ghost_msg.  This means the payloads will be aligned to
       // that value (8 currently)
+      // 人工构造一条信息，消息一般是内核创建发送给用户态的，这里仿造一条消息。
       struct {
         ghost_msg header;
         ghost_msg_payload_task_new payload;
@@ -298,6 +347,7 @@ class BasicDispatchScheduler : public Scheduler {
 
       bool allocated;
       std::tie(task, allocated) = allocator()->GetTask(Gtid(sw_gtid), swi);
+      //如果任务不是new出来的，就报错。为什么？
       if (!allocated) {
         GHOST_ERROR("Already had task for gtid %lu!", sw_gtid);
       }
@@ -437,8 +487,35 @@ class ThreadSafeMallocTaskAllocator
 
 template <typename TaskType>
 void BasicDispatchScheduler<TaskType>::DispatchMessage(const Message& msg) {
+  static int first=1;
+  static int fd;
+  if(first)
+  {
+    int32_t ret = mkfifo("ghost_monitor", S_IFIFO | 0666);
+    if (ret == -1)
+    {
+        std::cout << "Make fifo error\n";
+    }
+    fd = open("ghost_monitor", O_WRONLY|O_NONBLOCK);
+    if(fd==-1)
+    {
+      std::cout<<"can't not find monitor,run as no-monitor mode"<<std::endl;
+    }
+    first=0;
+  }
   if (msg.type() == MSG_NOP) return;
-
+  // static int c=0;
+  // static monitor m;
+  // m.set_message(msg);
+  // c++;
+  if(fd>0)
+  {
+    if (write(fd,"test",5) < 0) 
+    {
+        std::cout << "write error\n";
+    }
+  }
+  
   // CPU messages.
   if (msg.is_cpu_msg()) {
     switch (msg.type()) {

@@ -41,6 +41,7 @@ cc_library(
         "lib/channel.cc",
         "lib/enclave.cc",
         "lib/topology.cc",
+        "lib/monitor.cc",
     ],
     hdrs = [
         "bpf/user/agent.h",
@@ -50,6 +51,7 @@ cc_library(
         "lib/enclave.h",
         "lib/scheduler.h",
         "lib/topology.h",
+        "lib/monitor.h",
         "//third_party:iovisor_bcc/trace_helpers.h",
     ],
     copts = compiler_flags,
