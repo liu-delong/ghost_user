@@ -35,7 +35,9 @@
 #endif
 
 /* Helper to prevent the compiler from optimizing bounds check on x. */
+#ifndef BPF_MUST_CHECK
 #define BPF_MUST_CHECK(x) ({ asm volatile ("" : "+r"(x)); x; })
+#endif
 
 struct arr_list {
 	unsigned int first;
@@ -164,6 +166,21 @@ struct arr_list_entry {
 		(head)->last = (elem)->field.prev;			\
 	(elem)->field.prev = 0;						\
 	(elem)->field.next = 0;						\
+})
+
+#define arr_list_pop_first(arr, arr_sz, head, field) ({			\
+	typeof(&arr[0]) first = arr_list_first(arr, arr_sz, head);	\
+	unsigned int id = (head)->first;				\
+	if (first) {							\
+		typeof(&arr[0]) next = arr_list_next(arr, arr_sz, first, field);\
+		if (next)						\
+			next->field.prev = 0;				\
+		(head)->first = (first)->field.next;			\
+		if ((head)->last == id)					\
+			(head)->last = 0;				\
+		first->field.next = 0;					\
+	}								\
+	first;								\
 })
 
 /*

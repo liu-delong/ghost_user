@@ -56,12 +56,12 @@ struct Options {
   // are Get requests is '1 - range_query_ratio'.
   double range_query_ratio;
 
-  // The CPU that the load generator thread runs on.
-  int load_generator_cpu;
+  // The CPUs that the load generator threads run on.
+  ghost::CpuList load_generator_cpus = ghost::MachineTopology()->EmptyCpuList();
 
-  // For CFS (Linux Completely Fair Scheduler) experiments, the CPU that the
-  // dispatcher runs on.
-  int cfs_dispatcher_cpu;
+  // For CFS (Linux Completely Fair Scheduler) experiments, the CPUs that the
+  // dispatchers run on.
+  ghost::CpuList cfs_dispatcher_cpus = ghost::MachineTopology()->EmptyCpuList();
 
   // The number of workers. Each worker has one thread.
   size_t num_workers;
@@ -153,6 +153,8 @@ class Orchestrator {
     std::atomic<size_t> num_requests;
     // The requests.
     std::vector<Request> requests;
+    std::string response;
+    absl::Time last_finished;
   } ABSL_CACHELINE_ALIGNED;
 
   // Affine all background threads to this CPU.
@@ -169,14 +171,6 @@ class Orchestrator {
   absl::Duration GetThreadCpuTime() const;
 
  protected:
-  // The SID (sched item identifier) of the load generator.
-  static constexpr uint32_t kLoadGeneratorSid = 0;
-
-  // The SID (sched item identifier) of the dispatcher. Note that the dispatcher
-  // only runs in the CFS (Linux Completely Fair Scheduler) experiments. In the
-  // ghOSt experiments, the global agent plays the role of the dispatcher.
-  static constexpr uint32_t kDispatcherSid = 1;
-
   // Constructs the orchestrator. 'options' is the experiment settings.
   // 'total_threads' is the total number of threads managed by the orchestrator,
   // including the load generator thread, the worker threads, and if relevant,
@@ -203,7 +197,8 @@ class Orchestrator {
   // a random bit generator used for Get requests that have an exponential
   // service time. 'gen' is used to generate a sample from the exponential
   // distribution.
-  void HandleRequest(Request& request, absl::BitGen& gen);
+  void HandleRequest(Request& request, std::string& response,
+                     absl::BitGen& gen);
 
   // Prints all results (total numbers of requests, throughput, and latency
   // percentiles). 'experiment_duration' is the duration of the experiment.
@@ -213,7 +208,7 @@ class Orchestrator {
 
   size_t total_threads() const { return total_threads_; }
 
-  SyntheticNetwork& network() { return network_; }
+  SyntheticNetwork& network(uint32_t sid) { return *network_[sid]; }
 
   ExperimentThreadPool& thread_pool() { return thread_pool_; }
 
@@ -231,13 +226,16 @@ class Orchestrator {
   ThreadTrigger& first_run() { return first_run_; }
 
  private:
+  // The bytes to pre-allocate on the heap for each response.
+  static constexpr size_t kResponseReservationSize = 4096;
+
   // Processes 'request', which must be a Get request (a CHECK will fail if
   // not).
-  void HandleGet(Request& request, absl::BitGen& gen);
+  void HandleGet(Request& request, std::string& response, absl::BitGen& gen);
 
   // Processes 'request', which must be a Range query (a CHECK will fail if
   // not).
-  void HandleRange(Request& request, absl::BitGen& gen);
+  void HandleRange(Request& request, std::string& response, absl::BitGen& gen);
 
   // Prints the results for 'requests' (total number of requests in 'requests',
   // throughput, and latency percentiles). 'results_name' is a name printed with
@@ -277,9 +275,9 @@ class Orchestrator {
   // The RocksDB database.
   Database database_;
 
-  // The synthetic network that the load generator uses to generate synthetic
+  // The synthetic networks that the load generators use to generate synthetic
   // requests.
-  SyntheticNetwork network_;
+  std::vector<std::unique_ptr<SyntheticNetwork>> network_;
 
   // The time that the experiment started at (after initialization).
   absl::Time start_;

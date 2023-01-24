@@ -29,9 +29,14 @@
 // conflict, we need to name our verbose flag differently outside of Google.
 //
 // All internal Google binaries have a `v` flag by default. To be consistent
-// with our open source project, we instead use the `verbose` flag internally,
-// too.
+// with our open source project, we can use the `verbose` flag internally too
+// as an alias.
 ABSL_FLAG(int32_t, verbose, 0, "Verbosity level");
+
+// This flag is manually parsed on startup (see CheckVersion()), not within
+// absl::ParseCommandLine(). We have it here as an ABSL_FLAG just for
+// documentation reasons.
+ABSL_FLAG(bool, ghost_version, false, "Print UAPI ghOSt version and quit.");
 
 namespace ghost {
 
@@ -91,8 +96,9 @@ StatusWord::~StatusWord() {
 }
 
 LocalStatusWord::LocalStatusWord(StatusWord::AgentSW) {
-  CHECK_ZERO(
-      GhostHelper()->GetStatusWordInfo(GHOST_AGENT, sched_getcpu(), sw_info_));
+  CHECK_EQ(
+      GhostHelper()->GetStatusWordInfo(GHOST_AGENT, sched_getcpu(), sw_info_),
+      0);
   sw_ = status_word_from_info(&sw_info_);
   owner_ = Gtid::Current();
 }
@@ -313,19 +319,22 @@ static ctl_dir FindActiveEnclave() {
   return {-1, -1};
 }
 
-GhostThread::GhostThread(KernelScheduler ksched, std::function<void()> work)
+GhostThread::GhostThread(KernelScheduler ksched, std::function<void()> work,
+                         int dir_fd)
     : ksched_(ksched) {
   GhostThread::SetGlobalEnclaveFdsOnce();
 
-  thread_ = std::thread([this, w = std::move(work)] {
+  // `dir_fd` must only be set when the scheduler is ghOSt.
+  CHECK(ksched == KernelScheduler::kGhost || dir_fd == -1);
+
+  thread_ = std::thread([this, w = std::move(work), dir_fd] {
     tid_ = GetTID();
     gtid_ = Gtid::Current();
 
     started_.Notify();
 
     if (ksched_ == KernelScheduler::kGhost) {
-      const int ret =
-          GhostHelper()->SchedTaskEnterGhost(/*pid=*/0, /*dir_fd=*/-1);
+      const int ret = GhostHelper()->SchedTaskEnterGhost(/*pid=*/0, dir_fd);
       CHECK_EQ(ret, 0);
     }
     std::move(w)();

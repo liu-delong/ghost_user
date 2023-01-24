@@ -376,7 +376,7 @@ void LocalEnclave::CommonInit() {
   CHECK_NE(data_region_, MAP_FAILED);
 
   GhostHelper()->SetGlobalStatusWordTable(
-      new LocalStatusWordTable(dir_fd_, 0, 0));
+      new LocalStatusWordTable(dir_fd_, /*id=*/0, config_.numa_node_));
 }
 
 // Initialize a CpuRep for each cpu in enclaves_cpus_ (aka, cpus()).
@@ -614,6 +614,10 @@ bool LocalEnclave::CompleteRunRequest(RunRequest* req) {
 
     // txn poisoned due to sync-commit failure.
     case GHOST_TXN_POISONED:
+      break;
+
+    // txn aborted.
+    case GHOST_TXN_ABORTED:
       break;
 
     // target already on cpu

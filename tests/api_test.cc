@@ -8,11 +8,13 @@
 #include <sys/resource.h>
 
 #include <cstdint>
+#include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/random/random.h"
+#include "absl/status/status.h"
 #include "lib/agent.h"
 #include "lib/ghost.h"
 #include "lib/scheduler.h"
@@ -85,8 +87,8 @@ class DeadAgent : public LocalAgent {
             const ghost_msg_payload_task_new* payload =
                 static_cast<const ghost_msg_payload_task_new*>(msg.payload());
             ASSERT_THAT(task, IsNull());
-            task = absl::make_unique<Task<>>(Gtid(payload->gtid),
-                                             payload->sw_info);
+            task =
+                std::make_unique<Task<>>(Gtid(payload->gtid), payload->sw_info);
             task->seqnum = msg.seqnum();
             break;
           }
@@ -181,8 +183,8 @@ class FullDeadAgent final : public FullAgent<EnclaveType> {
       other_cpu = sched_cpu_;
       channel_ptr = nullptr;  // sentinel value to indicate a satellite cpu.
     }
-    return absl::make_unique<DeadAgent>(&this->enclave_, cpu, other_cpu,
-                                        channel_ptr);
+    return std::make_unique<DeadAgent>(&this->enclave_, cpu, other_cpu,
+                                       channel_ptr);
   }
 
   void RpcHandler(int64_t req, const AgentRpcArgs& args,
@@ -239,7 +241,7 @@ class SyncGroupScheduler final : public BasicDispatchScheduler<FifoTask> {
       std::shared_ptr<TaskAllocator<FifoTask>> allocator)
       : BasicDispatchScheduler(enclave, cpulist, std::move(allocator)),
         sched_cpu_(cpulist.Front()),
-        channel_(absl::make_unique<LocalChannel>(
+        channel_(std::make_unique<LocalChannel>(
             GHOST_MAX_QUEUE_ELEMS,
             /*node=*/0, MachineTopology()->ToCpuList({sched_cpu_}))) {}
 
@@ -531,7 +533,7 @@ class SyncGroupAgent final : public FullAgent<EnclaveType> {
   explicit SyncGroupAgent(AgentConfig config) : FullAgent<EnclaveType>(config) {
     auto allocator =
         std::make_shared<ThreadSafeMallocTaskAllocator<FifoTask>>();
-    scheduler_ = absl::make_unique<SyncGroupScheduler>(
+    scheduler_ = std::make_unique<SyncGroupScheduler>(
         &this->enclave_, config.cpus_, std::move(allocator));
     scheduler_->GetDefaultChannel().SetEnclaveDefault();
     this->StartAgentTasks();
@@ -541,8 +543,8 @@ class SyncGroupAgent final : public FullAgent<EnclaveType> {
   ~SyncGroupAgent() final { this->TerminateAgentTasks(); }
 
   std::unique_ptr<Agent> MakeAgent(const Cpu& cpu) final {
-    return absl::make_unique<TestAgent<SyncGroupScheduler>>(
-        &this->enclave_, cpu, scheduler_.get());
+    return std::make_unique<TestAgent<SyncGroupScheduler>>(&this->enclave_, cpu,
+                                                           scheduler_.get());
   }
 
   void RpcHandler(int64_t req, const AgentRpcArgs& args,
@@ -672,7 +674,7 @@ class FullIdlingAgent final : public FullAgent<EnclaveType> {
 
   std::unique_ptr<Agent> MakeAgent(const Cpu& cpu) final {
     const bool schedule = (cpu.id() == 0);  // schedule on the first cpu.
-    return absl::make_unique<IdlingAgent>(&this->enclave_, cpu, schedule);
+    return std::make_unique<IdlingAgent>(&this->enclave_, cpu, schedule);
   }
 
   void RpcHandler(int64_t req, const AgentRpcArgs& args,
@@ -822,7 +824,7 @@ class CoreScheduler {
     ASSERT_THAT(task_, IsNull());
     ASSERT_THAT(runnable, IsTrue());
 
-    task_ = absl::make_unique<CoreSchedTask>(Gtid(gtid), sw_info);
+    task_ = std::make_unique<CoreSchedTask>(Gtid(gtid), sw_info);
     task_->run_state = CoreSchedTask::RunState::kRunnable;
     task_->seqnum = seqnum;
     task_->sibling = 0;  // arbitrary.
@@ -1158,8 +1160,8 @@ class TimeAgent : public LocalAgent {
                 static_cast<const ghost_msg_payload_task_new*>(msg.payload());
 
             ASSERT_THAT(task, IsNull());
-            task = absl::make_unique<Task<>>(Gtid(payload->gtid),
-                                             payload->sw_info);
+            task =
+                std::make_unique<Task<>>(Gtid(payload->gtid), payload->sw_info);
             task->seqnum = msg.seqnum();
             runnable = payload->runnable;
             break;
@@ -1272,7 +1274,7 @@ TEST(ApiTest, KernelTimes) {
   // Arbitrary but safe because there must be at least one CPU.
   constexpr int kCpuNum = 0;
   Topology* topology = MachineTopology();
-  auto enclave = absl::make_unique<LocalEnclave>(
+  auto enclave = std::make_unique<LocalEnclave>(
       AgentConfig(topology, topology->ToCpuList(std::vector<int>{kCpuNum})));
   const Cpu kAgentCpu = topology->cpu(kCpuNum);
 
@@ -1379,8 +1381,8 @@ class SchedAffinityAgent : public LocalAgent {
             ASSERT_THAT(task, IsNull());
             ASSERT_FALSE(oncpu);
             ASSERT_FALSE(runnable);
-            task = absl::make_unique<Task<>>(Gtid(payload->gtid),
-                                             payload->sw_info);
+            task =
+                std::make_unique<Task<>>(Gtid(payload->gtid), payload->sw_info);
             task->seqnum = msg.seqnum();
             runnable = payload->runnable;
             break;
@@ -1505,8 +1507,8 @@ class FullSchedAffinityAgent final : public FullAgent<EnclaveType> {
     if (cpu != sched_cpu_) {
       channel_ptr = nullptr;  // sentinel value to indicate a satellite cpu.
     }
-    return absl::make_unique<SchedAffinityAgent>(&this->enclave_, cpu,
-                                                 channel_ptr);
+    return std::make_unique<SchedAffinityAgent>(&this->enclave_, cpu,
+                                                channel_ptr);
   }
 
   void RpcHandler(int64_t req, const AgentRpcArgs& args,
@@ -1833,8 +1835,8 @@ class FullDepartedRaceAgent final : public FullAgent<EnclaveType> {
     if (cpu != sched_cpu_) {
       channel_ptr = nullptr;  // sentinel value to indicate a satellite cpu.
     }
-    return absl::make_unique<DepartedRaceAgent>(&this->enclave_, cpu,
-                                                channel_ptr);
+    return std::make_unique<DepartedRaceAgent>(&this->enclave_, cpu,
+                                               channel_ptr);
   }
 
   void RpcHandler(int64_t req, const AgentRpcArgs& args,
@@ -1929,10 +1931,6 @@ TEST(ApiTest, GhostCloneGhost) {
   // Even though the threads have joined it does not mean they are dead.
   // pthread_join() can return before the dying task has made its way to
   // TASK_DEAD (CLONE_CHILD_CLEARTID sync via do_exit->exit_mm->mm_release).
-  //
-  // In this case FifoScheduler::ValidatePreExitState() can trigger a CHECK
-  // because the runqueue is not empty. We avoid this by spinning here until
-  // there are no more tasks remaining.
   int num_tasks;
   do {
     num_tasks = ap.Rpc(FifoScheduler::kCountAllTasks);
@@ -2183,7 +2181,8 @@ class FullMessageAgent final : public FullAgent<EnclaveType> {
         message = message_store_.At(index);
       }
 
-      response.buffer.Serialize(*message.msg(), message.length());
+      ASSERT_EQ(response.buffer.Serialize(*message.msg(), message.length()),
+                absl::OkStatus());
       response.response_code = 0;
       return;
     }

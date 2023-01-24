@@ -6,6 +6,8 @@
 
 #include "schedulers/fifo/centralized/fifo_scheduler.h"
 
+#include <memory>
+
 #include "absl/strings/str_format.h"
 
 namespace ghost {
@@ -45,11 +47,6 @@ bool FifoScheduler::Available(const Cpu& cpu) {
   if (cs->agent) return cs->agent->cpu_avail();
 
   return false;
-}
-
-void FifoScheduler::ValidatePreExitState() {
-  CHECK_EQ(num_tasks_, 0);
-  CHECK_EQ(RunqueueSize(), 0);
 }
 
 void FifoScheduler::DumpAllTasks() {
@@ -444,7 +441,7 @@ std::unique_ptr<FifoScheduler> SingleThreadFifoScheduler(
     absl::Duration preemption_time_slice) {
   auto allocator =
       std::make_shared<SingleThreadMallocTaskAllocator<FifoTask>>();
-  auto scheduler = absl::make_unique<FifoScheduler>(
+  auto scheduler = std::make_unique<FifoScheduler>(
       enclave, std::move(cpulist), std::move(allocator), global_cpu,
       preemption_time_slice);
   return scheduler;

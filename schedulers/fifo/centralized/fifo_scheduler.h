@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 
 #include "absl/time/time.h"
 #include "lib/agent.h"
@@ -90,11 +91,6 @@ class FifoScheduler : public BasicDispatchScheduler<FifoTask> {
   void CpuTimerExpired(const Message& msg);
 
   bool Empty() { return num_tasks_ == 0; }
-
-  // We validate state is consistent before actually tearing anything down since
-  // tear-down involves pings and agents potentially becoming non-coherent as
-  // they are removed sequentially.
-  void ValidatePreExitState();
 
   // Removes 'task' from the runqueue.
   void RemoveFromRunqueue(FifoTask* task);
@@ -228,8 +224,6 @@ class FullFifoAgent : public FullAgent<EnclaveType> {
   }
 
   ~FullFifoAgent() override {
-    global_scheduler_->ValidatePreExitState();
-
     // Terminate global agent before satellites to avoid a false negative error
     // from ghost_run(). e.g. when the global agent tries to schedule on a CPU
     // without an active satellite agent.
@@ -252,8 +246,8 @@ class FullFifoAgent : public FullAgent<EnclaveType> {
   }
 
   std::unique_ptr<Agent> MakeAgent(const Cpu& cpu) override {
-    return absl::make_unique<FifoAgent>(&this->enclave_, cpu,
-                                        global_scheduler_.get());
+    return std::make_unique<FifoAgent>(&this->enclave_, cpu,
+                                       global_scheduler_.get());
   }
 
   void RpcHandler(int64_t req, const AgentRpcArgs& args,

@@ -14,6 +14,9 @@
 
 ABSL_FLAG(std::string, print_format, "pretty",
           "Results print format (\"pretty\" or \"csv\", default: \"pretty\")");
+ABSL_FLAG(bool, print_last, false,
+          "If true, only prints the end-to-end results, rather than the "
+          "results for each stage (default: false)");
 ABSL_FLAG(bool, print_distribution, false,
           "Prints every request's results (default: false)");
 ABSL_FLAG(bool, print_ns, false,
@@ -36,11 +39,11 @@ ABSL_FLAG(
     "The share of requests that are range queries. This value must be greater "
     "than or equal to 0.0 and less than or equal to 1.0. The share of requests "
     "that are Get requests is '1 - range_query_ratio'. (default: 0.0).");
-ABSL_FLAG(int, load_generator_cpu, 10,
-          "The CPU that the load generator thread runs on (default: 10).");
-ABSL_FLAG(int, cfs_dispatcher_cpu, 11,
-          "For CFS (Linux Completely Fair Scheduler) experiments, the CPU that "
-          "the dispatcher runs on (default: 11).");
+ABSL_FLAG(std::string, load_generator_cpus, "10",
+          "The CPUs that the load generator threads run on (default: 10).");
+ABSL_FLAG(std::string, cfs_dispatcher_cpus, "11",
+          "For CFS (Linux Completely Fair Scheduler) experiments, the CPUs "
+          "that the dispatchers run on (default: 11).");
 ABSL_FLAG(size_t, num_workers, 6,
           "The number of workers. Each worker has one thread. (default: 6).");
 ABSL_FLAG(std::string, worker_cpus, "12-17",
@@ -98,6 +101,7 @@ ghost_test::Options GetOptions() {
   CHECK(print_format == "pretty" || print_format == "csv");
   options.print_options.pretty = (print_format == "pretty");
 
+  options.print_options.print_last = absl::GetFlag(FLAGS_print_last);
   options.print_options.distribution = absl::GetFlag(FLAGS_print_distribution);
   options.print_options.ns = absl::GetFlag(FLAGS_print_ns);
   options.print_options.os = &std::cout;
@@ -106,8 +110,10 @@ ghost_test::Options GetOptions() {
   options.rocksdb_db_path = absl::GetFlag(FLAGS_rocksdb_db_path);
   options.throughput = absl::GetFlag(FLAGS_throughput);
   options.range_query_ratio = absl::GetFlag(FLAGS_range_query_ratio);
-  options.load_generator_cpu = absl::GetFlag(FLAGS_load_generator_cpu);
-  options.cfs_dispatcher_cpu = absl::GetFlag(FLAGS_cfs_dispatcher_cpu);
+  options.load_generator_cpus = ghost::MachineTopology()->ParseCpuStr(
+      absl::GetFlag(FLAGS_load_generator_cpus));
+  options.cfs_dispatcher_cpus = ghost::MachineTopology()->ParseCpuStr(
+      absl::GetFlag(FLAGS_cfs_dispatcher_cpus));
   options.num_workers = absl::GetFlag(FLAGS_num_workers);
   options.worker_cpus =
       ghost::MachineTopology()->ParseCpuStr(absl::GetFlag(FLAGS_worker_cpus));

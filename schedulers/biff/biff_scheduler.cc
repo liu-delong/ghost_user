@@ -7,6 +7,7 @@
 #include "schedulers/biff/biff_scheduler.h"
 
 #include "absl/strings/str_format.h"
+#include "third_party/bpf/topology.bpf.h"
 #include "bpf/user/agent.h"
 
 namespace ghost {
@@ -23,6 +24,9 @@ BiffScheduler::BiffScheduler(Enclave* enclave, CpuList cpulist,
                          BPF_PROG_TYPE_GHOST_SCHED, BPF_GHOST_SCHED_PNT);
   bpf_program__set_types(bpf_obj_->progs.biff_msg_send, BPF_PROG_TYPE_GHOST_MSG,
                          BPF_GHOST_MSG_SEND);
+
+  bpf_obj_->rodata->enable_bpf_printd = CapHas(CAP_PERFMON);
+  SetBpfTopologyVars(bpf_obj_->rodata, MachineTopology());
 
   CHECK_EQ(biff_bpf__load(bpf_obj_), 0);
 

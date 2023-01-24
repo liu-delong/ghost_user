@@ -27,6 +27,7 @@
 #include "absl/debugging/symbolize.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/time/time.h"
 #include "kernel/ghost_uapi.h"
 #include "lib/logging.h"
 
@@ -295,6 +296,20 @@ void PrintBacktrace(FILE* f, void* uctx) {
   }
 }
 
+bool CapHas(cap_value_t cap) {
+  cap_t caps = cap_get_proc();
+  if (!caps) {
+    return false;
+  }
+  cap_flag_value_t set_or_clr;
+  int err = cap_get_flag(caps, cap, CAP_EFFECTIVE, &set_or_clr);
+  cap_free(caps);
+  if (err) {
+    return false;
+  }
+  return set_or_clr == CAP_SET;
+}
+
 void Exit(int code) {
   if (code != 0) {
     std::cerr << "PID " << Gtid::Current().tid() << " Backtrace:" << std::endl;
@@ -318,6 +333,12 @@ void SpinFor(absl::Duration remaining) {
 
     for (int i = 0; i < 100; ++i) {
       delta = MonotonicNow() - start;
+
+      // If clock_gettime is slow, we don't want to mistake that for a
+      // preemption.
+      if (delta > absl::Microseconds(10)) {
+        break;
+      }
     }
 
     // Don't count preempted time; if we were off cpu, the large delta

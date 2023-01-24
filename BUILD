@@ -25,7 +25,6 @@ exports_files(["LICENSE"])
 
 compiler_flags = [
     "-Wno-sign-compare",
-    "-DGHOST_LOGGING",
 ]
 
 bpf_linkopts = [
@@ -60,14 +59,29 @@ cc_library(
         ":base",
         ":ghost",
         ":shared",
+        ":trivial_status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@linux//:libbpf",
+    ],
+)
+
+cc_library(
+    name = "trivial_status",
+    srcs = ["lib/trivial_status.cc"],
+    hdrs = ["lib/trivial_status.h"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -82,8 +96,11 @@ cc_binary(
     deps = [
         ":agent",
         ":base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:symbolize",
         "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -93,7 +110,6 @@ cc_binary(
 cc_library(
     name = "cfs_scheduler",
     srcs = [
-        "schedulers/cfs/cfs_agent.cc",
         "schedulers/cfs/cfs_scheduler.cc",
         "schedulers/cfs/cfs_scheduler.h",
     ],
@@ -104,8 +120,11 @@ cc_library(
     deps = [
         ":agent",
         ":base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:symbolize",
         "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -226,7 +245,6 @@ cc_binary(
     ],
     copts = compiler_flags,
     deps = [
-        ":agent",
         ":base",
         ":cfs_scheduler",
         ":ghost",
@@ -247,6 +265,22 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "simple_cfs",
+    srcs = [
+        "tests/simple_cfs.cc",
+    ],
+    copts = compiler_flags,
+    deps = [
+        ":base",
+        ":cfs_scheduler",
+        ":ghost",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_test(
     name = "agent_test",
     size = "small",
@@ -258,6 +292,7 @@ cc_test(
         ":agent",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/random",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -275,12 +310,17 @@ cc_test(
         ":ghost",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/random",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 # Makes vmlinux_ghost_*.h files visible to eBPF code.
-exports_files(glob(["kernel/vmlinux_ghost_*.h"]))
+exports_files(glob([
+    "kernel/vmlinux_ghost_*.h",
+]) + [
+    "lib/queue.bpf.h",
+])
 
 cc_library(
     name = "base",
@@ -294,6 +334,7 @@ cc_library(
         "//third_party:util/util.h",
     ],
     copts = compiler_flags,
+    linkopts = ["-lcap"],
     deps = [
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -302,6 +343,8 @@ cc_library(
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -353,6 +396,7 @@ cc_library(
         "schedulers/biff/biff_bpf.skel.h",
         "schedulers/biff/biff_scheduler.h",
         "//third_party/bpf:biff_bpf.h",
+        "//third_party/bpf:topology.bpf.h",
     ],
     copts = compiler_flags,
     deps = [
@@ -386,6 +430,60 @@ cc_test(
     copts = compiler_flags,
     deps = [
         ":biff_scheduler",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_binary(
+    name = "agent_cfs_bpf",
+    srcs = [
+        "schedulers/cfs_bpf/agent_cfs.cc",
+    ],
+    copts = compiler_flags,
+    deps = [
+        ":agent",
+        ":cfs_bpf_scheduler",
+        "@com_google_absl//absl/debugging:symbolize",
+        "@com_google_absl//absl/flags:parse",
+    ],
+)
+
+bpf_skeleton(
+    name = "cfs_bpf_skel",
+    bpf_object = "//third_party/bpf:cfs_bpf",
+    skel_hdr = "schedulers/cfs_bpf/cfs_bpf.skel.h",
+)
+
+cc_library(
+    name = "cfs_bpf_scheduler",
+    srcs = [
+        "schedulers/cfs_bpf/cfs_scheduler.cc",
+    ],
+    hdrs = [
+        "lib/queue.bpf.h",
+        "schedulers/cfs_bpf/cfs_bpf.skel.h",
+        "schedulers/cfs_bpf/cfs_scheduler.h",
+        "//third_party/bpf:cfs_bpf.h",
+    ],
+    copts = compiler_flags,
+    deps = [
+        ":agent",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/strings:str_format",
+        "@linux//:libbpf",
+    ],
+)
+
+cc_test(
+    name = "cfs_bpf_test",
+    size = "small",
+    srcs = [
+        "tests/cfs_bpf_test.cc",
+    ],
+    copts = compiler_flags,
+    deps = [
+        ":cfs_bpf_scheduler",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -607,6 +705,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -667,7 +767,6 @@ cc_binary(
     ],
     copts = compiler_flags,
     deps = [
-        ":base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],

@@ -94,24 +94,9 @@
 
 #include "third_party/bpf/biff_bpf.h"
 #include "third_party/bpf/common.bpf.h"
+#include "third_party/bpf/topology.bpf.h"
 
 #include <asm-generic/errno.h>
-
-/*
- * Toggle this manually for debugging  bpf_printk requires CAP_PERFMON, which
- * agents might not have.
- *
- * TODO: it'd be nice to have libbpf compile this out if we don't have the right
- * CAP, instead of failing verification.
- */
-//#define bpf_printd bpf_printk
-#define bpf_printd(...)
-
-/*
- * Part of the ghost UAPI.  vmlinux.h doesn't include #defines, so we need to
- * add it manually.
- */
-#define SEND_TASK_LATCHED (1 << 10)
 
 bool initialized;
 
@@ -183,10 +168,11 @@ static struct biff_bpf_cpu_data *cpu_to_pcpu(u32 cpu)
 	struct __cpu_arr *__ca;
 	u32 zero = 0;
 
-	if (cpu >= BIFF_MAX_CPUS)
-		return NULL;
 	__ca = bpf_map_lookup_elem(&cpu_data, &zero);
 	if (!__ca)
+		return NULL;
+	BPF_MUST_CHECK(cpu);
+	if (cpu >= BIFF_MAX_CPUS)
 		return NULL;
 	return &__ca->e[cpu];
 }
@@ -293,12 +279,6 @@ static void enqueue_task(u64 gtid, u32 task_barrier)
 		 */
 		bpf_printd("failed to enqueue %p, err %d\n", gtid, err);
 	}
-}
-
-/* Avoid the dreaded "dereference of modified ctx ptr R6 off=3 disallowed" */
-static void __attribute__((noinline)) set_dont_idle(struct bpf_ghost_sched *ctx)
-{
-	ctx->dont_idle = true;
 }
 
 SEC("ghost_sched/pnt")
@@ -596,9 +576,14 @@ static void __attribute__((noinline)) handle_cpu_tick(struct bpf_ghost_msg *msg)
 	if (!swd)
 		return;
 
-	/* Arbitrary POLICY: kick anyone off cpu after 50ms */
-	if (bpf_ktime_get_us() - swd->ran_at > 50000)
+	/*
+	 * Arbitrary POLICY: kick anyone off cpu after 50ms, and kick the
+	 * sibling too, just because we can.
+	 */
+	if (bpf_ktime_get_us() - swd->ran_at > 50000) {
 		resched_cpu(cpu);
+		resched_cpu(sibling_of(cpu));
+	}
 }
 
 static void __attribute__((noinline))
