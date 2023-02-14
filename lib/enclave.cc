@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <regex>  // NOLINT: no RE2; ghost limits itself to absl
 
 #include "absl/base/attributes.h"
@@ -465,8 +466,10 @@ LocalEnclave::LocalEnclave(AgentConfig config)
     : Enclave(config), dir_fd_(config.enclave_fd_) {
   if (dir_fd_ == -1) {
     CreateAndAttachToEnclave();
+    std::cout<<"dir_fd_1==-1"<<std::endl;
   } else {
     AttachToExistingEnclave();
+    std::cout<<"dir_fd_1=="<<dir_fd_<<std::endl;
   }
 
   BuildCpuReps();

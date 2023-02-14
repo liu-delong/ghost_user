@@ -21,6 +21,7 @@
 #include "lib/monitor.h"
 #include <sys/types.h>   
 #include <sys/stat.h>
+#include <cstring>
 
 namespace ghost {
 
@@ -555,30 +556,29 @@ void BasicDispatchScheduler<TaskType>::DispatchMessage(const Message& msg) {
   static int fd;
   if(first)
   {
-    int32_t ret = mkfifo("ghost_monitor", S_IFIFO | 0666);
-    if (ret == -1)
-    {
-        std::cout << "Make fifo error\n";
-    }
-    fd = open("ghost_monitor", O_WRONLY|O_NONBLOCK);
+    fd = open("/home/liu/graduation_design/ghOSt_out_test", O_WRONLY|O_NONBLOCK);
     if(fd==-1)
     {
       std::cout<<"can't not find monitor,run as no-monitor mode"<<std::endl;
     }
     first=0;
   }
+  if(fd>=0)
+  {
+    auto buf=new char[msg.stringify().size()+1];
+    auto length=msg.stringify().size()+1;
+    write(fd,(void*)&length,4);
+    strcpy(buf,msg.stringify().c_str());
+    write(fd,(void*)buf,msg.stringify().size()+1);
+    delete buf;
+    std::cout<<"send!"<<std::endl;
+  }
+  
   if (msg.type() == MSG_NOP) return;
   // static int c=0;
   // static monitor m;
   // m.set_message(msg);
   // c++;
-  if(fd>0)
-  {
-    if (write(fd,"test",5) < 0) 
-    {
-        std::cout << "write error\n";
-    }
-  }
   
   // CPU messages.
   if (msg.is_cpu_msg()) {

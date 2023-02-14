@@ -59,7 +59,7 @@ void FifoScheduler::EnclaveReady() {
     CpuState* cs = cpu_state(cpu);
     Agent* agent = enclave()->GetAgent(cpu);
 
-    // AssociateTask may fail if agent barrier is stale.
+    // AssociateTask may fail if agent barrier is stale. //不新鲜的
     while (!cs->channel->AssociateTask(agent->gtid(), agent->barrier(),
                                        /*status=*/nullptr)) {
       CHECK_EQ(errno, ESTALE);
